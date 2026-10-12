@@ -1,0 +1,2 @@
+Lenh: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -no-color .github/workflows/cd-multi-env.yml
+Ket qua: khong co loi hoac canh bao (exit code 0)

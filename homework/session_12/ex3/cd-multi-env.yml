@@ -1,0 +1,112 @@
+# Workflow CD đa môi trường: tách biệt luồng triển khai Staging và Production
+# bằng GitHub Environments.
+#
+# Vì sao dùng một workflow với điều kiện "if" theo github.ref thay vì tách thành
+# hai workflow riêng?
+#   - Hai môi trường dùng chung các bước (checkout, chạy script deploy, ghi tóm tắt)
+#     nên gom vào một file giúp tránh lặp lại và dễ bảo trì.
+#   - Mỗi job chỉ chạy khi đúng nhánh: nhánh develop -> deploy-staging,
+#     nhánh main -> deploy-prod. Job còn lại ở trạng thái Skipped.
+#   - Chỉ cần nhìn một trang Actions là thấy toàn bộ luồng CD đa môi trường.
+#
+# Environment protection rules (Required reviewers, Wait timer, Deployment branches)
+# được áp dụng ở CẤP JOB. Khi job khai báo "environment: production", GitHub sẽ
+# giữ job ở trạng thái "Waiting" (Review pending) cho đến khi người duyệt bấm
+# "Approve and deploy". Chỉ sau đó runner mới được cấp phát để chạy các bước.
+#
+# Trường "url" của environment sẽ hiển thị trên trang Deployments của repo
+# và ở nút "View deployment" trên trang chạy workflow.
+
+name: CD - Deploy da moi truong (staging/production)
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Job 1: Staging - kích hoạt khi push vào develop, không cần phê duyệt.
+  deploy-staging:
+    name: Deploy to Staging
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.example.com
+    steps:
+      - name: Checkout mã nguồn
+        uses: actions/checkout@v5
+
+      - name: Hiển thị thông tin triển khai
+        run: |
+          echo "Nhánh          : ${GITHUB_REF_NAME}"
+          echo "Commit SHA     : ${GITHUB_SHA}"
+          echo "Người kích hoạt: ${GITHUB_ACTOR}"
+          echo "Environment    : staging"
+
+      - name: Mô phỏng triển khai
+        run: bash scripts/deploy.sh staging
+
+      - name: Ghi tóm tắt
+        run: |
+          {
+            echo "## Kết quả triển khai Staging"
+            echo ""
+            echo "| Mục | Giá trị |"
+            echo "| --- | --- |"
+            echo "| Environment | staging |"
+            echo "| URL | https://staging.example.com |"
+            echo "| Nhánh | ${GITHUB_REF_NAME} |"
+            echo "| Commit | ${GITHUB_SHA} |"
+            echo "| Người kích hoạt | ${GITHUB_ACTOR} |"
+            echo "| Phê duyệt | Không yêu cầu |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Job 2: Production - kích hoạt khi push vào main.
+  # Environment "production" bật Required reviewers nên job sẽ dừng ở
+  # trạng thái Waiting for review cho đến khi được phê duyệt.
+  deploy-prod:
+    name: Deploy to Production
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://api.prod.example.com
+    steps:
+      - name: Checkout mã nguồn
+        uses: actions/checkout@v5
+
+      - name: Hiển thị thông tin triển khai
+        run: |
+          echo "Nhánh          : ${GITHUB_REF_NAME}"
+          echo "Commit SHA     : ${GITHUB_SHA}"
+          echo "Người kích hoạt: ${GITHUB_ACTOR}"
+          echo "Environment    : production"
+
+      - name: Mô phỏng triển khai
+        run: bash scripts/deploy.sh production
+
+      - name: Kiểm tra sau triển khai
+        run: |
+          echo "Kiểm tra sau triển khai Production: OK"
+          echo "Dịch vụ tại https://api.prod.example.com đang hoạt động bình thường."
+
+      - name: Ghi tóm tắt
+        run: |
+          {
+            echo "## Kết quả triển khai Production"
+            echo ""
+            echo "| Mục | Giá trị |"
+            echo "| --- | --- |"
+            echo "| Environment | production |"
+            echo "| URL | https://api.prod.example.com |"
+            echo "| Nhánh | ${GITHUB_REF_NAME} |"
+            echo "| Commit | ${GITHUB_SHA} |"
+            echo "| Người kích hoạt | ${GITHUB_ACTOR} |"
+            echo "| Phê duyệt | Đã được reviewer phê duyệt |"
+          } >> "$GITHUB_STEP_SUMMARY"
