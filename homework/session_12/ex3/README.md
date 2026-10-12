@@ -241,9 +241,78 @@ Tham số sai hoặc thiếu thì script thoát với mã lỗi 1, nhờ đó jo
 
 Nếu bấm "Reject" thay vì Approve, job bị hủy và run kết thúc ở trạng thái thất bại.
 
-## 7. Kết quả chạy thật
+## 7. Kết quả chạy thật trên GitHub Actions
 
-(người điều phối cập nhật sau khi push)
+Repo: https://github.com/letoan0902/DevOps-Session12-bai3 (tab Actions: https://github.com/letoan0902/DevOps-Session12-bai3/actions). Hai environment đã được tạo trước khi push, `production` có required reviewer là `letoan0902` và chỉ cho phép deploy từ nhánh `main`:
+
+```text
+$ gh api repos/letoan0902/DevOps-Session12-bai3/environments -q '.environments[] | .name'
+production
+staging
+```
+
+### 7.1. Push nhánh `develop` -> job `deploy-staging` chạy ngay (run 38301827604)
+
+```text
+$ gh run view 38301827604 --repo letoan0902/DevOps-Session12-bai3
+V develop CD - Deploy da moi truong (staging/production) . 38301827604
+Triggered via push
+
+JOBS
+V Deploy to Staging in 11s (ID 114986325519)
+- Deploy to Production (ID 114986327454)
+
+$ gh api repos/letoan0902/DevOps-Session12-bai3/actions/runs/38301827604/jobs -q '.jobs[] | "\(.name): \(.status)/\(.conclusion)"'
+Deploy to Staging: completed/success
+Deploy to Production: completed/skipped
+```
+
+Trích log bước `Mô phỏng triển khai` của job staging:
+
+```text
+=== Bắt đầu triển khai lên môi trường: staging ===
+[2/4] Cập nhật cấu hình cho môi trường staging...
+Health check: OK
+=== Triển khai lên staging hoàn tất ===
+```
+
+Environment `staging` không có protection rule nên job chạy thẳng và xanh sau 11 giây. Job `deploy-prod` bị skipped vì điều kiện `if: github.ref == 'refs/heads/main'` không thỏa.
+
+### 7.2. Push nhánh `main` -> job `deploy-prod` dừng chờ phê duyệt (run 38301870340)
+
+```text
+$ gh run view 38301870340 --repo letoan0902/DevOps-Session12-bai3
+* main CD - Deploy da moi truong (staging/production) . 38301870340
+Triggered via push
+
+JOBS
+* Deploy to Production (ID 114986471468)
+- Deploy to Staging (ID 114986473501)
+
+$ gh api repos/letoan0902/DevOps-Session12-bai3/actions/runs/38301870340/jobs -q '.jobs[] | "\(.name): \(.status)/\(.conclusion // "-")"'
+Deploy to Production: waiting/-
+Deploy to Staging: completed/skipped
+
+$ gh api repos/letoan0902/DevOps-Session12-bai3/actions/runs/38301870340/pending_deployments
+environment=production  current_user_can_approve=true  reviewers=letoan0902
+```
+
+Run ở trạng thái `waiting`: job `Deploy to Production` chưa được cấp runner, GitHub tạo một deployment chờ (pending deployment) cho environment `production` và chỉ reviewer `letoan0902` mới được phê duyệt. Trang run hiển thị thông báo chờ phê duyệt kèm nút Review deployments. Trang Deployments của repo ghi nhận hai deployment: `staging` từ `develop` (đã xong) và `production` từ `main` (đang chờ).
+
+### 7.3. Bước phê duyệt (học viên thực hiện và chụp ảnh)
+
+Mở run 38301870340, bấm Review deployments, tích `production`, có thể ghi chú, rồi bấm Approve and deploy. Job `Deploy to Production` sẽ chạy script `scripts/deploy.sh production` và chuyển sang tích xanh; trang Deployments cập nhật URL `https://api.prod.example.com`. Ảnh chụp cửa sổ Review deployments chính là ảnh nộp bài. Tương đương bằng dòng lệnh:
+
+```bash
+gh api --method POST repos/letoan0902/DevOps-Session12-bai3/actions/runs/38301870340/pending_deployments   -f "environment_ids[]=<id của production>" -f state=approved -f comment="Dong y deploy production"
+```
+
+### 7.4. Bảng tổng hợp
+
+| Nhánh push | Job deploy-staging | Job deploy-prod | Ghi chú |
+|---|---|---|---|
+| `develop` | success (11s) | skipped | environment `staging` không có rule, chạy ngay |
+| `main` | skipped | waiting (chờ reviewer `letoan0902`) | required reviewers của `production` chặn job cho tới khi được duyệt |
 
 ## 8. Ảnh chụp màn hình
 
